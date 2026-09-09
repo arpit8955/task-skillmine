@@ -7,6 +7,8 @@
 > **Production-grade full-stack autonomous operations system.**  
 > Investigates real customer events with OpenAI tool calling, bounds autonomy with a deterministic risk policy layer, safely executes reversible actions, and enforces human operator veto on high-risk, ambiguous, or financial actions.
 
+> 📺 **Demo Walkthrough Video:** `https://www.loom.com/share/9060b848b2cd4a30b44afc543dee2c6e`  
+
 ---
 
 ## Table of Contents
