@@ -3,11 +3,14 @@
   "version": "1.0.0",
   "description": "Autonomous Support Operations Agent with Human Veto - Backend",
   "main": "src/server.js",
+  "type": "module",
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "seed": "node src/scripts/seed.js",
-    "test": "vitest run",
+    "demo": "node src/scripts/demoScenarios.js",
+    "simulate": "node src/scripts/demoScenarios.js",
+    "test": "vitest run --fileParallelism=false",
     "test:watch": "vitest"
   },
   "dependencies": {

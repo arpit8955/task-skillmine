@@ -1,0 +1,30 @@
+{
+  "name": "task-skillmine-root",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Autonomous Support Operations Agent with Human Veto",
+  "scripts": {
+    "install:all": "npm install --prefix server && npm install --prefix client",
+    "seed": "npm --prefix server run seed",
+    "demo": "npm --prefix server run demo",
+    "simulate": "npm --prefix server run simulate",
+    "test": "npm --prefix server run test",
+    "test:server": "npm --prefix server test",
+    "build": "npm --prefix client run build",
+    "server": "npm --prefix server run dev",
+    "client": "npm --prefix client run dev"
+  },
+  "keywords": [
+    "autonomous-agent",
+    "human-in-the-loop",
+    "human-veto",
+    "bullmq",
+    "redis",
+    "mongodb",
+    "react",
+    "socketio",
+    "vitest"
+  ],
+  "author": "Arpit",
+  "license": "MIT"
+}
