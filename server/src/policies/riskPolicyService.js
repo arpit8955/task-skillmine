@@ -43,6 +43,12 @@ export function evaluateRisk(agentDecision) {
     return result;
   }
 
+  const decisionText = JSON.stringify(agentDecision);
+  if (/ignore\s+(all\s+)?(previous|prior)\s+instructions|system\s+override|bypass\s+(human\s+)?approval|auto-?approve|prompt\s+injection/i.test(decisionText)) {
+    result.reasons.push('Security violation: prompt injection or override pattern detected in decision context');
+    return result;
+  }
+
   const { proposedAction, risk, evidence } = agentDecision;
   const actionType = proposedAction.type;
 

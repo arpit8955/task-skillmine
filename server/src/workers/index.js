@@ -1,5 +1,5 @@
 import { Worker } from 'bullmq';
-import { createNewRedisConnection } from '../config/redis.js';
+import { createNewRedisConnection, isRedisConnected } from '../config/redis.js';
 import { SupportEvent, EVENT_STATES } from '../models/index.js';
 import { investigateEvent } from '../services/agentService.js';
 import { evaluateRisk } from '../policies/riskPolicyService.js';
@@ -13,39 +13,53 @@ let agentWorker = null;
 let actionWorker = null;
 
 export function startWorkers() {
-  agentWorker = new Worker('agent-processing', processAgentJob, {
-    connection: createNewRedisConnection(),
-    concurrency: 2,
-  });
+  try {
+    const conn = createNewRedisConnection();
+    conn.connect().then(() => {
+      agentWorker = new Worker('agent-processing', processAgentJob, {
+        connection: conn,
+        concurrency: 2,
+      });
 
-  agentWorker.on('completed', (job) => {
-    logger.info('Agent job completed', { jobId: job.id, eventId: job.data.eventId });
-  });
+      agentWorker.on('completed', (job) => {
+        logger.info('Agent job completed', { jobId: job.id, eventId: job.data.eventId });
+      });
 
-  agentWorker.on('failed', (job, err) => {
-    logger.error('Agent job failed', { jobId: job?.id, eventId: job?.data?.eventId, error: err.message });
-    handleJobFailure(job, err);
-  });
+      agentWorker.on('failed', (job, err) => {
+        logger.error('Agent job failed', { jobId: job?.id, eventId: job?.data?.eventId, error: err.message });
+        handleJobFailure(job, err);
+      });
 
-  actionWorker = new Worker('action-execution', processActionJob, {
-    connection: createNewRedisConnection(),
-    concurrency: 2,
-  });
+      actionWorker = new Worker('action-execution', processActionJob, {
+        connection: createNewRedisConnection(),
+        concurrency: 2,
+      });
 
-  actionWorker.on('completed', (job) => {
-    logger.info('Action job completed', { jobId: job.id, eventId: job.data.eventId });
-  });
+      actionWorker.on('completed', (job) => {
+        logger.info('Action job completed', { jobId: job.id, eventId: job.data.eventId });
+      });
 
-  actionWorker.on('failed', (job, err) => {
-    logger.error('Action job failed', { jobId: job?.id, error: err.message });
-  });
+      actionWorker.on('failed', (job, err) => {
+        logger.error('Action job failed', { jobId: job?.id, error: err.message });
+      });
 
-  logger.info('BullMQ workers started');
+      logger.info('BullMQ workers started successfully');
+    }).catch(() => {
+      logger.info('Redis not running; workers operating via direct in-process async pipeline');
+    });
+  } catch (err) {
+    logger.warn('Could not initialize BullMQ workers; operating in direct async mode', { error: err.message });
+  }
 }
 
-async function processAgentJob(job) {
+export async function processAgentJob(job) {
   const { eventId } = job.data;
-  logger.info('Processing agent job', { eventId, jobId: job.id, attempt: job.attemptsMade + 1 });
+  const attempt = (job.attemptsMade || 0) + 1;
+  await processAgentJobDirect(eventId, attempt);
+}
+
+export async function processAgentJobDirect(eventId, attempt = 1) {
+  logger.info('Processing agent job', { eventId, attempt });
 
   const event = await SupportEvent.findOne({ eventId });
   if (!event) {
@@ -61,7 +75,7 @@ async function processAgentJob(job) {
 
   try {
     await transitionEventState(eventId, EVENT_STATES.INVESTIGATING, {
-      reason: `Investigation started (attempt ${job.attemptsMade + 1})`,
+      reason: `Investigation started (attempt ${attempt})`,
     });
   } catch (transitionError) {
     logger.warn('State transition failed, event may already be processing', { eventId, error: transitionError.message });
@@ -70,7 +84,7 @@ async function processAgentJob(job) {
 
   emitActivity('agent:event_processing', {
     eventId,
-    attempt: job.attemptsMade + 1,
+    attempt,
     timestamp: new Date(),
   });
 
@@ -118,15 +132,21 @@ async function processAgentJob(job) {
       await SupportEvent.updateOne({ eventId }, { actionStatus: 'completed' });
     }
   } else {
+    await transitionEventState(eventId, EVENT_STATES.PENDING_APPROVAL, { reason: 'Gated by human veto policy' });
     await SupportEvent.updateOne({ eventId }, { actionStatus: 'pending_approval' });
     await createApproval(eventId, agentRunId, decision);
   }
 }
 
-async function processActionJob(job) {
+export async function processActionJob(job) {
   const { eventId, actionType, payload } = job.data;
   logger.info('Processing action job', { eventId, actionType });
   await executeAction(eventId, actionType, payload);
+}
+
+export async function processActionJobDirect(eventId, actionType, payload) {
+  logger.info('Processing action job direct', { eventId, actionType });
+  return executeAction(eventId, actionType, payload);
 }
 
 async function handleJobFailure(job, error) {
@@ -163,6 +183,10 @@ async function handleJobFailure(job, error) {
 }
 
 export async function stopWorkers() {
-  if (agentWorker) await agentWorker.close();
-  if (actionWorker) await actionWorker.close();
+  if (agentWorker) {
+    try { await agentWorker.close(); } catch {}
+  }
+  if (actionWorker) {
+    try { await actionWorker.close(); } catch {}
+  }
 }
